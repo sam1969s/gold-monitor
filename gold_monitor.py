@@ -3,42 +3,56 @@ import time
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
+import plotly.graph_objects as go
 
 # إعدادات الصفحة الخارجية
-st.set_page_config(page_title="لوحة مراقبة الذهب", layout="wide")
+st.set_page_config(page_title="لوحة مراقبة الذهب الفوري", layout="wide")
 
 # السطر السحري لفرض التنسيق العربي الصحيح (RTL) ومنع تشوه النصوص
 st.markdown(
     """
     <style>
-    .stApp {
-        direction: RTL;
-        text-align: right;
-    }
-    .stMetric {
-        text-align: right;
-    }
+    .stApp { direction: RTL; text-align: right; }
+    .stMetric { text-align: right; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-st.markdown("<h1 style='text-align: center; color: #FFD700;'>⚡ منظومة المراقبة والمضاربة اللحظية للذهب (نسخة سوريا)</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>تحليل تلقائي متجدد لتدفقات السيولة والأخبار الأساسية</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #FFD700;'>⚡ منظومة المراقبة والمضاربة اللحظية للذهب الفوري</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>تحليل متجدد لتدفقات السيولة، الأخبار، وشارت الشموع اليابانية للذهب الفوري (Spot Gold)</p>", unsafe_allow_html=True)
 
 def get_market_data():
     try:
+        # استخدام الرموز الفورية الصافية (Spot) بدلاً من العقود الآجلة
         tickers = {
-            "Gold": "GC=F",
-            "DXY": "DX-Y.NYB",
-            "US10Y": "^TNX",
-            "NVDA": "NVDA"
+            "Gold": "XAUUSD=X",       # الذهب الفوري الصافي (Spot Gold)
+            "DXY": "DX-Y.NYB",        # مؤشر الدولار
+            "US10Y": "^TNX",          # عوائد السندات الأمريكية 10 سنوات
+            "NVDA": "NVDA"            # سهم نفيديا (مؤشر الهامش في التكنولوجيا)
         }
         data = {}
         for name, ticker in tickers.items():
             t = yf.Ticker(ticker)
-            data[name] = t.history(period="1d")['Close'].iloc[-1]
+            # سحب آخر يومين لحساب بيانات الإغلاق وأعلى/أدنى سعر بدقة
+            hist = t.history(period="2d")
+            data[name] = hist['Close'].iloc[-1]
+            if name == "Gold":
+                data["Gold_High"] = hist['High'].iloc[-1]
+                data["Gold_Low"] = hist['Low'].iloc[-1]
         return data
+    except:
+        return None
+
+def get_gold_candles():
+    """
+    سحب بيانات الشموع اليابانية للذهب الفوري لآخر 5 أيام تداول بفاصل ساعة واحدة
+    """
+    try:
+        t = yf.Ticker("XAUUSD=X")
+        # سحب بيانات 5 أيام بفاصل ساعة واحدة (1h) خفيفة جداً وسريعة التحميل
+        df = t.history(period="5d", interval="1h")
+        return df
     except:
         return None
 
@@ -48,13 +62,9 @@ def get_crypto_panic_index():
         response = requests.get(url).json()
         value = response['data']['value']
         classification = response['data']['value_classification']
-        
-        # ترجمة المصطلحات للعربية
         translations = {
-            "Extreme Fear": "خوف شديد",
-            "Fear": "خوف",
-            "Neutral": "محايد (استقرار الثقة)",
-            "Greed": "جشع (عودة الثقة)",
+            "Extreme Fear": "خوف شديد", "Fear": "خوف",
+            "Neutral": "محايد (استقرار الثقة)", "Greed": "جشع (عودة الثقة)",
             "Extreme Greed": "جشع شديد"
         }
         status_ar = translations.get(classification, "محايد")
@@ -78,12 +88,18 @@ def get_breaking_news_rss():
 market = get_market_data()
 news = get_breaking_news_rss()
 panic_val, panic_status = get_crypto_panic_index()
+df_candles = get_gold_candles()
 
 if market:
     danger_words = ["margin call", "rate hike", "liquidation", "debt crisis", "fed hawkish", "france"]
     margin_risk_detected = any(any(word in title.lower() for word in danger_words) for title in news)
     
-    # تحديد القرار المضاربي بناءً على تدفق السيولة ومستويات الـ 50 لمؤشر الخوف
+    # حساب المستويات الفنية اليومية للذهب الفوري (Pivot Point)
+    pivot = (market['Gold_High'] + market['Gold_Low'] + market['Gold']) / 3
+    r1 = (2 * pivot) - market['Gold_Low']
+    s1 = (2 * pivot) - market['Gold_High']
+    
+    # تحديد القرار المضاربي
     if market['DXY'] > 105 and market['Gold'] < 4000:
         if margin_risk_detected:
             decision_text = "❌ إشارة: نداءات هامش نشطة (Margin Calls)! الدولار يلتهم السيولة. انتظر قاع 3,950$ ولا تشتري الآن."
@@ -92,15 +108,15 @@ if market:
             decision_text = "⚠️ إشارة: الذهب تحت الـ 4000$ والدولار مرتفع، ترقب سلوك السعر عند الدعم الحالي."
             decision_color = "#FFA500"
     elif market['DXY'] < 104 and market['Gold'] >= 3950:
-        decision_text = f"🟢 إشارة شراء: انحسار موجة الذعر وهبوط الدولار. عودة الثقة للسوق حول مستوى {panic_val} ({panic_status}). فرصة ارتداد صاعد قوية."
+        decision_text = f"🟢 إشارة شراء: انحسار موجة الذعر وهبوط الدولار. عودة الثقة للسوق حول مستوى {panic_val} ({panic_status}). فرصة ارتداد صاعد قوية للذهب الفوري."
         decision_color = "#00D26A"
     else:
         decision_text = f"🔵 إشارة: الأسواق مستقرة نسبياً في نطاق عرضي ومؤشر الخوف عند {panic_val} ({panic_status}) بانتظار قرار الفيدرالي يوم الأربعاء."
         decision_color = "#0080FF"
 
-    # عرض الأسعار في كروت منسقة وثابتة متوافقة مع اليمين
+    # عرض الأسعار الفورية في كروت منسقة وثابتة
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric(label="✨ الذهب الفوري", value=f"{market['Gold']:.2f} $")
+    col1.metric(label="✨ الذهب الفوري (Spot)", value=f"{market['Gold']:.2f} $")
     col2.metric(label="💵 مؤشر الدولار (DXY)", value=f"{market['DXY']:.2f}")
     col3.metric(label="📈 سندات أمريكا 10Y", value=f"{market['US10Y']:.2f} %")
     col4.metric(label="🤖 سهم نفيديا AI", value=f"{market['NVDA']:.2f} $")
@@ -110,12 +126,42 @@ if market:
     st.markdown(f"<div style='background-color:{decision_color}; padding:15px; border-radius:10px; text-align:center; color:white; font-size:20px; font-weight:bold; direction: rtl;'>{decision_text}</div>", unsafe_allow_html=True)
     st.markdown("---")
     
+    # --- قسم شارت الشموع اليابانية التفاعلي المطور ---
+    if df_candles is not None and not df_candles.empty:
+        st.subheader("📊 شارت الشموع اليابانية للذهب الفوري (فاصل 1 ساعة - آخر 5 أيام):")
+        
+        fig = go.Figure(data=[go.Candlestick(
+            x=df_candles.index,
+            open=df_candles['Open'],
+            high=df_candles['High'],
+            low=df_candles['Low'],
+            close=df_candles['Close'],
+            increasing_line_color='#00D26A',  # الشموع الصاعدة باللون الأخضر
+            decreasing_line_color='#FF4B4B',  # الشموع الهابطة باللون الأحمر
+            name="الذهب الفوري"
+        )])
+        
+        # دمج خطوط الدعم والمقاومة والنقطة المحورية أفقياً خلف الشموع
+        fig.add_hline(y=r1, line_dash="dash", line_color="#FF4B4B", annotation_text=f"مقاومة R1 ({r1:.2f}$)", annotation_position="top left")
+        fig.add_hline(y=pivot, line_dash="dash", line_color="#0080FF", annotation_text=f"المحور Pivot ({pivot:.2f}$)", annotation_position="top left")
+        fig.add_hline(y=s1, line_dash="dash", line_color="#00D26A", annotation_text=f"دعم S1 ({s1:.2f}$)", annotation_position="bottom left")
+        
+        # تحسين مظهر وتصميم الشارت ليتوافق مع شاشات الموبايل والمظهر الداكن
+        fig.update_layout(
+            template="plotly_dark",
+            xaxis_rangeslider_visible=False, # إخفاء شريط التمرير السفلي المزعج على الموبايل لتوسيع الشارت
+            margin=dict(l=20, r=20, t=20, b=20),
+            height=450
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("---")
+    
     st.subheader("📰 آخر العواجل الاقتصادية من رويترز:")
     for title in news:
         st.markdown(f"• {title}")
         
     st.caption(f"آخر تحديث تلقائي للموقع: {time.strftime('%H:%M:%S')}")
 
-# آلية التحديث التلقائي الآمنة التي تمنع تعليق المتصفح
 time.sleep(30)
 st.rerun()
