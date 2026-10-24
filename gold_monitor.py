@@ -24,7 +24,6 @@ st.markdown("<p style='text-align: center;'>تحليل متجدد لتدفقات
 
 def get_market_data():
     try:
-        # استخدام الرموز الفورية الصافية (Spot) بدلاً من العقود الآجلة
         tickers = {
             "Gold": "XAUUSD=X",       # الذهب الفوري الصافي (Spot Gold)
             "DXY": "DX-Y.NYB",        # مؤشر الدولار
@@ -34,8 +33,7 @@ def get_market_data():
         data = {}
         for name, ticker in tickers.items():
             t = yf.Ticker(ticker)
-            # سحب آخر يومين لحساب بيانات الإغلاق وأعلى/أدنى سعر بدقة
-            hist = t.history(period="2d")
+            hist = t.history(period="5d") # استخدام نطاق أوسع لضمان توفر البيانات في الإجازة
             data[name] = hist['Close'].iloc[-1]
             if name == "Gold":
                 data["Gold_High"] = hist['High'].iloc[-1]
@@ -46,12 +44,11 @@ def get_market_data():
 
 def get_gold_candles():
     """
-    سحب بيانات الشموع اليابانية للذهب الفوري لآخر 5 أيام تداول بفاصل ساعة واحدة
+    سحب بيانات الشموع اليابانية للذهب الفوري بنطاق يومي مستقر لا يعلق في العطلات
     """
     try:
         t = yf.Ticker("XAUUSD=X")
-        # سحب بيانات 5 أيام بفاصل ساعة واحدة (1h) خفيفة جداً وسريعة التحميل
-        df = t.history(period="5d", interval="1h")
+        df = t.history(period="5d") # جلب آخر 5 أيام تداول بنطاق يومي آمن
         return df
     except:
         return None
@@ -99,7 +96,7 @@ if market:
     r1 = (2 * pivot) - market['Gold_Low']
     s1 = (2 * pivot) - market['Gold_High']
     
-    # تحديد القرار المضاربي
+    # تحديد القرار المضاربي بناءً على إغلاق الجمعة
     if market['DXY'] > 105 and market['Gold'] < 4000:
         if margin_risk_detected:
             decision_text = "❌ إشارة: نداءات هامش نشطة (Margin Calls)! الدولار يلتهم السيولة. انتظر قاع 3,950$ ولا تشتري الآن."
@@ -111,7 +108,7 @@ if market:
         decision_text = f"🟢 إشارة شراء: انحسار موجة الذعر وهبوط الدولار. عودة الثقة للسوق حول مستوى {panic_val} ({panic_status}). فرصة ارتداد صاعد قوية للذهب الفوري."
         decision_color = "#00D26A"
     else:
-        decision_text = f"🔵 إشارة: الأسواق مستقرة نسبياً في نطاق عرضي ومؤشر الخوف عند {panic_val} ({panic_status}) بانتظار قرار الفيدرالي يوم الأربعاء."
+        decision_text = f"🔵 إشارة: الأسواق مستقرة في نطاق عرضي بإغلاق الأسبوع ومؤشر الخوف عند {panic_val} ({panic_status}) بانتظار افتتاح الغد والقرار الفاصل يوم الأربعاء."
         decision_color = "#0080FF"
 
     # عرض الأسعار الفورية في كروت منسقة وثابتة
@@ -126,9 +123,9 @@ if market:
     st.markdown(f"<div style='background-color:{decision_color}; padding:15px; border-radius:10px; text-align:center; color:white; font-size:20px; font-weight:bold; direction: rtl;'>{decision_text}</div>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # --- قسم شارت الشموع اليابانية التفاعلي المطور ---
+    # --- قسم شارت الشموع اليابانية التفاعلي الآمن والمصحح ---
     if df_candles is not None and not df_candles.empty:
-        st.subheader("📊 شارت الشموع اليابانية للذهب الفوري (فاصل 1 ساعة - آخر 5 أيام):")
+        st.subheader("📊 شارت الشموع اليابانية للذهب الفوري (آخر إغلاقات الأسبوع):")
         
         fig = go.Figure(data=[go.Candlestick(
             x=df_candles.index,
@@ -136,22 +133,21 @@ if market:
             high=df_candles['High'],
             low=df_candles['Low'],
             close=df_candles['Close'],
-            increasing_line_color='#00D26A',  # الشموع الصاعدة باللون الأخضر
-            decreasing_line_color='#FF4B4B',  # الشموع الهابطة باللون الأحمر
+            increasing_line_color='#00D26A',  # الشموع الصاعدة بالأخضر
+            decreasing_line_color='#FF4B4B',  # الشموع الهابطة بالأحمر
             name="الذهب الفوري"
         )])
         
-        # دمج خطوط الدعم والمقاومة والنقطة المحورية أفقياً خلف الشموع
+        # دمج خطوط الدعم والمقاومة والنقطة المحورية أفقياً
         fig.add_hline(y=r1, line_dash="dash", line_color="#FF4B4B", annotation_text=f"مقاومة R1 ({r1:.2f}$)", annotation_position="top left")
         fig.add_hline(y=pivot, line_dash="dash", line_color="#0080FF", annotation_text=f"المحور Pivot ({pivot:.2f}$)", annotation_position="top left")
         fig.add_hline(y=s1, line_dash="dash", line_color="#00D26A", annotation_text=f"دعم S1 ({s1:.2f}$)", annotation_position="bottom left")
         
-        # تحسين مظهر وتصميم الشارت ليتوافق مع شاشات الموبايل والمظهر الداكن
         fig.update_layout(
             template="plotly_dark",
-            xaxis_rangeslider_visible=False, # إخفاء شريط التمرير السفلي المزعج على الموبايل لتوسيع الشارت
+            xaxis_rangeslider_visible=False,
             margin=dict(l=20, r=20, t=20, b=20),
-            height=450
+            height=400
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -161,7 +157,7 @@ if market:
     for title in news:
         st.markdown(f"• {title}")
         
-    st.caption(f"آخر تحديث تلقائي للموقع: {time.strftime('%H:%M:%S')}")
+    st.caption(f"آخر تحديث تلقائي آمن للموقع: {time.strftime('%H:%M:%S')}")
 
 time.sleep(30)
 st.rerun()
