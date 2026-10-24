@@ -24,16 +24,17 @@ st.markdown("<p style='text-align: center;'>تحليل متجدد لتدفقات
 
 def get_market_data():
     try:
+        # الرمز GC=F هو الرمز الأكثر استقراراً في البيانات على مدار الساعة حتى في العطلات
         tickers = {
-            "Gold": "XAUUSD=X",       # الذهب الفوري الصافي (Spot Gold)
-            "DXY": "DX-Y.NYB",        # مؤشر الدولار
-            "US10Y": "^TNX",          # عوائد السندات الأمريكية 10 سنوات
-            "NVDA": "NVDA"            # سهم نفيديا (مؤشر الهامش في التكنولوجيا)
+            "Gold": "GC=F",           
+            "DXY": "DX-Y.NYB",        
+            "US10Y": "^TNX",          
+            "NVDA": "NVDA"            
         }
         data = {}
         for name, ticker in tickers.items():
             t = yf.Ticker(ticker)
-            hist = t.history(period="5d") # استخدام نطاق أوسع لضمان توفر البيانات في الإجازة
+            hist = t.history(period="5d")
             data[name] = hist['Close'].iloc[-1]
             if name == "Gold":
                 data["Gold_High"] = hist['High'].iloc[-1]
@@ -44,11 +45,11 @@ def get_market_data():
 
 def get_gold_candles():
     """
-    سحب بيانات الشموع اليابانية للذهب الفوري بنطاق يومي مستقر لا يعلق في العطلات
+    جلب بيانات الشموع اليابانية التاريخية المستقرة لآخر 5 أيام تداول لمنع تجميد الشاشة
     """
     try:
-        t = yf.Ticker("XAUUSD=X")
-        df = t.history(period="5d") # جلب آخر 5 أيام تداول بنطاق يومي آمن
+        t = yf.Ticker("GC=F")
+        df = t.history(period="5d")
         return df
     except:
         return None
@@ -91,12 +92,12 @@ if market:
     danger_words = ["margin call", "rate hike", "liquidation", "debt crisis", "fed hawkish", "france"]
     margin_risk_detected = any(any(word in title.lower() for word in danger_words) for title in news)
     
-    # حساب المستويات الفنية اليومية للذهب الفوري (Pivot Point)
+    # حساب مستويات الدعم والمقاومة والنقطة المحورية للذهب
     pivot = (market['Gold_High'] + market['Gold_Low'] + market['Gold']) / 3
     r1 = (2 * pivot) - market['Gold_Low']
     s1 = (2 * pivot) - market['Gold_High']
     
-    # تحديد القرار المضاربي بناءً على إغلاق الجمعة
+    # تحديد القرار المضاربي بناءً على تدفق السيولة والأسعار
     if market['DXY'] > 105 and market['Gold'] < 4000:
         if margin_risk_detected:
             decision_text = "❌ إشارة: نداءات هامش نشطة (Margin Calls)! الدولار يلتهم السيولة. انتظر قاع 3,950$ ولا تشتري الآن."
@@ -111,7 +112,7 @@ if market:
         decision_text = f"🔵 إشارة: الأسواق مستقرة في نطاق عرضي بإغلاق الأسبوع ومؤشر الخوف عند {panic_val} ({panic_status}) بانتظار افتتاح الغد والقرار الفاصل يوم الأربعاء."
         decision_color = "#0080FF"
 
-    # عرض الأسعار الفورية في كروت منسقة وثابتة
+    # عرض الكروت الرقمية الخمسة من اليمين لليسار بشكل متناسق
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric(label="✨ الذهب الفوري (Spot)", value=f"{market['Gold']:.2f} $")
     col2.metric(label="💵 مؤشر الدولار (DXY)", value=f"{market['DXY']:.2f}")
@@ -123,9 +124,9 @@ if market:
     st.markdown(f"<div style='background-color:{decision_color}; padding:15px; border-radius:10px; text-align:center; color:white; font-size:20px; font-weight:bold; direction: rtl;'>{decision_text}</div>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # --- قسم شارت الشموع اليابانية التفاعلي الآمن والمصحح ---
+    # --- عرض شارت الشموع اليابانية التفاعلي بعد تصحيح مصدر البيانات ---
     if df_candles is not None and not df_candles.empty:
-        st.subheader("📊 شارت الشموع اليابانية للذهب الفوري (آخر إغلاقات الأسبوع):")
+        st.subheader("📊 شارت الشموع اليابانية للذهب (آخر إغلاقات الأسبوع):")
         
         fig = go.Figure(data=[go.Candlestick(
             x=df_candles.index,
@@ -133,12 +134,12 @@ if market:
             high=df_candles['High'],
             low=df_candles['Low'],
             close=df_candles['Close'],
-            increasing_line_color='#00D26A',  # الشموع الصاعدة بالأخضر
-            decreasing_line_color='#FF4B4B',  # الشموع الهابطة بالأحمر
-            name="الذهب الفوري"
+            increasing_line_color='#00D26A',  # أخضر للصعود
+            decreasing_line_color='#FF4B4B',  # أحمر للهبوط
+            name="الذهب"
         )])
         
-        # دمج خطوط الدعم والمقاومة والنقطة المحورية أفقياً
+        # دمج خطوط المستويات الفنية أفقياً خلف الشموع اليابانية
         fig.add_hline(y=r1, line_dash="dash", line_color="#FF4B4B", annotation_text=f"مقاومة R1 ({r1:.2f}$)", annotation_position="top left")
         fig.add_hline(y=pivot, line_dash="dash", line_color="#0080FF", annotation_text=f"المحور Pivot ({pivot:.2f}$)", annotation_position="top left")
         fig.add_hline(y=s1, line_dash="dash", line_color="#00D26A", annotation_text=f"دعم S1 ({s1:.2f}$)", annotation_position="bottom left")
